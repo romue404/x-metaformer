@@ -1,4 +1,5 @@
 import torch.nn as nn
+from act_layers import GatedActFn
 
 
 class GeneralizedLinear(nn.Module):
@@ -17,10 +18,13 @@ class MLP(nn.Module):
         super().__init__()
         med_channels = int(expansion * dim)
         self.mlp = nn.Sequential(
-            GeneralizedLinear(dim, med_channels, bias, feature_dim),
+            GeneralizedLinear(dim,
+                              med_channels if not isinstance(act(), GatedActFn) else med_channels*2,
+                              bias,
+                              feature_dim),
             act(),
             nn.Dropout(p_dropout),
-            GeneralizedLinear(dim, med_channels, bias, feature_dim),
+            GeneralizedLinear(med_channels, dim, bias, feature_dim),
             nn.Dropout(p_dropout)
         )
 

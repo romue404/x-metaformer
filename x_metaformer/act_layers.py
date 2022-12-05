@@ -44,11 +44,11 @@ class GatedActFn(nn.Module):
         return x * self.act(gates)
 
 
-GEGLU       = partial(GatedActFn, act=nn.GELU())
-REGLU       = partial(GatedActFn, act=nn.ReLU())
-StarREGLU   = partial(GatedActFn, act=StarReLU())
-RSEGLU      = partial(GatedActFn, act=ReLUSquared())
-SwishGLU    = partial(GatedActFn, act=nn.SiLU())
+GEGLU       = partial(GatedActFn, nn.GELU())
+REGLU       = partial(GatedActFn, nn.ReLU())
+StarREGLU   = partial(GatedActFn, StarReLU())
+RSEGLU      = partial(GatedActFn, ReLUSquared())
+SwishGLU    = partial(GatedActFn, nn.SiLU())
 
 
 class DropPath(nn.Module):
