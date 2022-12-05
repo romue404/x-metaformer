@@ -4,7 +4,7 @@ this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
 
 setup(name='Metaformer',
-      version='0.1.1',
+      version='0.1.2',
       description='A PyTorch implementation of "MetaFormer Baselines" with optional extensions.',
       author='Robert Müller',
       author_email='robert.mueller1990@googlemail.com',
