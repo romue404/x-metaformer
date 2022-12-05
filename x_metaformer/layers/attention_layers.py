@@ -1,13 +1,14 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mlp_layers import GeneralizedLinear
+from x_metaformer.layers.mlp_layers import GeneralizedLinear
+from functools import partial
 
 
 class Attention(nn.Module):
     def __init__(self,
-                 dim,
                  channel_loc,
+                 dim,
                  head_dim=32,
                  num_heads=4,
                  attn_dropout=0.0,
@@ -78,7 +79,7 @@ class Attention(nn.Module):
             vk = top[..., -1].unsqueeze(-1).expand_as(scores)
             mask = scores < vk
             val = -torch.finfo(scores.dtype).max
-            return scores.masked_fill_(mask, val)  # inplace
+            scores.masked_fill_(mask, val)  # inplace
         return scores
 
     def adjust_scores(self, scores):
@@ -98,13 +99,16 @@ class Attention(nn.Module):
         return self.proj_dropout(self.proj_out(out))
 
 
+AttentionConv = partial(Attention, 1)
+
+
 if __name__ == '__main__':
     for c, f, t in [(64, 16, 8), (128, 22, 44)]:
         test_batch = torch.randn(12, c, f, t)
-        print(f'Attention:   {Attention(c, 1, l2=True, scale_value=10, trainable_scale=False)(test_batch).shape}')
+        print(f'Attention:   {AttentionConv(c, l2=True, scale_value=10, trainable_scale=False)(test_batch).shape}')
     print('TinyTest1 successful')
 
     for c, f, t in [(64, 16, 8), (128, 22, 44)]:
         test_batch = torch.randn(12, f, t, c)
-        print(f'Attention:   {Attention(c, -1, l2=True, scale_value=10, trainable_scale=False)(test_batch).shape}')
+        print(f'Attention:   {Attention(-1, c, l2=True, scale_value=10, trainable_scale=False)(test_batch).shape}')
     print('TinyTest2 successful')

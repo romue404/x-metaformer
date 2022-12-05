@@ -1,5 +1,5 @@
 import torch.nn as nn
-from act_layers import GatedActFn
+from x_metaformer.layers.act_layers import GatedActFn
 
 
 class GeneralizedLinear(nn.Module):

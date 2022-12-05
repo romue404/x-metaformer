@@ -1,5 +1,6 @@
 import torch.nn as nn
 from functools import partial
+from x_metaformer.layers.norm_layers import ConvLayerNorm
 
 
 class MBConv(nn.Module):
@@ -21,7 +22,7 @@ class MBConv(nn.Module):
 class LearnableUpDownsampling(nn.Module):
     UP, DOWN = 'up', 'down'
 
-    def __init__(self, mode, in_channels, out_channels, norm, kernel_size=3, stride=2, pre_norm=False, post_norm=False):
+    def __init__(self, mode, in_channels, out_channels, kernel_size=3, stride=2, norm=ConvLayerNorm, pre_norm=False, post_norm=False):
         super(LearnableUpDownsampling, self).__init__()
         assert mode in [self.UP, self.DOWN], f'mode must either be "{self.UP}" or "{self.DOWN}"'
         kernel_size = (kernel_size, kernel_size) if not isinstance(kernel_size, tuple) else kernel_size
@@ -29,9 +30,9 @@ class LearnableUpDownsampling(nn.Module):
         padding = (kernel_size[0] // stride[0], kernel_size[1] // stride[1])
         conv_cls = partial(nn.ConvTranspose2d, output_padding=padding) if mode == 'up' else nn.Conv2d
         self.conv = nn.Sequential(
-            norm(in_channels=in_channels) if pre_norm else nn.Identity(),
+            norm(in_channels) if pre_norm else nn.Identity(),
             conv_cls(in_channels, out_channels, kernel_size, stride, padding=padding, bias=False),
-            norm(in_channels=in_channels) if post_norm else nn.Identity()
+            norm(in_channels) if post_norm else nn.Identity()
         )
 
     def forward(self, x):
