@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class RMSNorm(nn.Module):
     def __init__(self, shape=None, dim=(-1, -2), eps=1e-6):
         super().__init__()

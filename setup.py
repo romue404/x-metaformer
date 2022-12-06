@@ -3,6 +3,7 @@ from pathlib import Path
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
 
+
 setup(name='x-Metaformer',
       version='0.1.3',
       description='A PyTorch implementation of "MetaFormer Baselines" with optional extensions.',
@@ -13,7 +14,9 @@ setup(name='x-Metaformer',
       keywords=[
             'artificial intelligence',
             'pytorch',
+            'metaformer',
             'transformer',
+            'attention',
             'convolutions'
       ],
       classifiers=[
@@ -26,5 +29,5 @@ setup(name='x-Metaformer',
       long_description=long_description,
       long_description_content_type='text/markdown',
       packages=find_packages(exclude=['examples']),
-      install_requires=['torch>=1.6']
-)
+      install_requires=['torch>=1.6', 'numpy']
+      )

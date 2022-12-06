@@ -1,12 +1,13 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from layers.conv_layers import MBConv, Downsampling, Upsampling
-from layers.mlp_layers import MLPConv
-from layers.attention_layers import AttentionConv
-from layers.act_layers import StarReLU, ReLUSquared, DropPath
-from layers.norm_layers import ConvLayerNorm, RMSNorm
+from x_metaformer.layers.conv_layers import MBConv, Downsampling, Upsampling
+from x_metaformer.layers.mlp_layers import MLPConv
+from x_metaformer.layers.attention_layers import AttentionConv
+from x_metaformer.layers.act_layers import StarReLU, ReLUSquared, DropPath
+from x_metaformer.layers.norm_layers import ConvLayerNorm, RMSNorm
 from functools import partial
+from abc import ABC, abstractmethod
 
 
 class MetaFormerBlock(nn.Module):
@@ -66,44 +67,33 @@ def _init_weights(m):
             nn.init.trunc_normal_(m.weight, std=.02)
 
 
-class MetaFormer(nn.Module):
+class MetaFormerABC(nn.Module, ABC):
     def __init__(self,
-                 in_channels,
-                 mixers,
-                 depths=(3, 3, 9, 3),
-                 dims=(64, 128, 320, 512),
-                 init_kernel_size=3,
-                 init_stride=2,
-                 drop_path_rate=0.3,
-                 norm='ln',
-                 **mixer_kwargs
+                 in_channels, mixers, depths, dims,
+                 init_kernel_size, init_stride, drop_path_rate, norm, use_pos_emb
                  ):
-        super(MetaFormer, self).__init__()
-        assert len(dims) >= 2 and len(depths) >= 2 and len(dims) == len(depths)
+        super().__init__()
+        assert 2 <= len(dims) == len(depths) >= 2
+        self.use_pos_emb = use_pos_emb
+        self.in_channels = in_channels
+        self.mixers = mixers
+        self.dims = dims
+        self.init_kernel_size = init_kernel_size
+        self.init_stride = init_stride
+        self.drop_path_rate = drop_path_rate
+        self.depths = depths
 
-        norm_inner, norm_out = self.get_norm(norm)
+        self.norm_inner, self.norm_out = self.get_norm(norm)
 
-        init_downsampling = Downsampling(in_channels, dims[0],
-                                         init_kernel_size, init_stride,
-                                         norm=norm_inner,
-                                         pre_norm=False, post_norm=False)
-
-        dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
-        dix = np.cumsum((0, *depths))
-
-        self.downsampling = nn.ModuleList([init_downsampling] + [
-            Downsampling(dims[i], dims[i+1], pre_norm=True, norm=norm_inner) for i in range(len(dims)-1)
-        ])
-
-        self.blocks = nn.ModuleList([
-            MetaFormerBlock(dims[i], depth=depths[i], mixer=mixers[i], norm=norm_inner,
-                            act=StarReLU, drop_probs=dp_rates[dix[i]: dix[i+1]], **mixer_kwargs)
-            for i in range(len(depths))
-        ])
+        self.pooling: nn.ModuleList
+        self.blocks: nn.ModuleList
 
         self.out_dim = dims[-1]
-        self.norm_out = norm_out(self.out_dim)
-        self.apply(_init_weights)
+        self.norm_out = self.norm_out(self.out_dim)
+
+    @abstractmethod
+    def forward(self, x: torch.Tensor):
+        pass
 
     def get_norm(self, mode):
         if mode == 'ln':
@@ -115,20 +105,109 @@ class MetaFormer(nn.Module):
         else:
             raise NotImplemented('Norm must be "ln", "rms" or "bn"')
 
+
+class MetaFormer(MetaFormerABC):
+    def __init__(self,
+                 in_channels,
+                 mixers,
+                 depths=(3, 3, 9, 3),
+                 dims=(64, 128, 320, 512),
+                 init_kernel_size=3,
+                 init_stride=2,
+                 drop_path_rate=0.3,
+                 norm='ln',
+                 use_pos_emb=True,
+                 **mixer_kwargs):
+        super(MetaFormer, self).__init__(in_channels, mixers, depths, dims,
+                                         init_kernel_size, init_stride,
+                                         drop_path_rate, norm, use_pos_emb)
+        self.mixer_kwargs = mixer_kwargs
+
+        init_downsampling = Downsampling(in_channels, dims[0],
+                                         init_kernel_size, init_stride,
+                                         norm=self.norm_inner,
+                                         pre_norm=False, post_norm=False
+                                         )
+
+        dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
+        dix = np.cumsum((0, *depths))
+
+        self.pooling = nn.ModuleList([init_downsampling] + [
+            Downsampling(dims[i], dims[i+1], pre_norm=True, norm=self.norm_inner) for i in range(len(dims)-1)
+        ])
+
+        self.blocks = nn.ModuleList([
+            MetaFormerBlock(dims[i], depth=depths[i], mixer=mixers[i], norm=self.norm_inner,
+                            act=StarReLU, drop_probs=dp_rates[dix[i]: dix[i+1]], **mixer_kwargs)
+            for i in range(len(depths))
+        ])
+
+        self.apply(_init_weights)
+
     def pool(self, x):
         return x.mean([-2, -1])
 
     def forward(self, x, return_embeddings=False):
         for i in range(len(self.blocks)):
-            x = self.downsampling[i](x)
-            if i == 0:
+            x = self.pooling[i](x)
+            if i == 0 and self.use_pos_emb:
                 x = x + posemb_sincos_2d(x)
             x = self.blocks[i](x)
         pooled = self.norm_out(self.pool(x))
         return pooled if not return_embeddings else (pooled, x)
 
+    def get_decoder(self):
+        return MetaFormerDecoder(
+            in_channels=self.dims[-1],
+            out_channels=self.in_channels,
+            mixers=self.mixers[::-1][1:],
+            depths=self.depths[::-1][1:],
+            dims=self.dims[::-1][1:],
+            final_kernel_size=self.init_kernel_size,
+            final_stride=self.init_stride,
+            **self.mixer_kwargs
+        )
+
 
 MetaFormerEncoder = MetaFormer
+
+
+class MetaFormerDecoder(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 mixers,
+                 depths,
+                 dims,
+                 final_kernel_size=3,
+                 final_stride=2,
+                 **mixer_kwargs
+                 ):
+        super(MetaFormerDecoder, self).__init__()
+
+        first_upsampling = Upsampling(in_channels, dims[0], pre_norm=False, post_norm=False)
+        final_upsampling = Upsampling(dims[-1], out_channels, final_kernel_size, final_stride, pre_norm=True)
+
+        self.pooling = nn.ModuleList(
+            [first_upsampling] +
+            [Upsampling(dims[i], dims[i+1], pre_norm=True) for i in range(0, len(dims)-1)] +
+            [final_upsampling]
+        )
+
+        self.blocks = nn.ModuleList([
+            MetaFormerBlock(dims[i], depth=depths[i], mixer=mixers[i],
+                            act=StarReLU, drop_probs=[0]*depths[i], **mixer_kwargs)
+            for i in range(0, len(depths))
+        ])
+
+        self.out_dim = out_channels
+        self.apply(_init_weights)
+
+    def forward(self, x):
+        for i in range(len(self.blocks)):
+            x = self.pooling[i](x)  # upsampling
+            x = self.blocks[i](x)
+        return self.pooling[-1](x)
 
 
 class ConvFormer(MetaFormer):
@@ -145,48 +224,10 @@ class CAFormer(MetaFormer):
                          **kwargs)
 
 
-class MetaFormerDecoder(nn.Module):
-    def __init__(self,
-                 out_channels: int,
-                 mixers,
-                 depths=(9, 3, 3),
-                 dims=(512, 320, 128, 64),
-                 final_kernel_size=3,
-                 final_stride=2,
-                 **mixer_kwargs
-                 ):
-        super(MetaFormerDecoder, self).__init__()
-
-        final_upsampling = Upsampling(dims[-1], out_channels, final_kernel_size, final_stride, pre_norm=True)
-        first_upsampling = Upsampling(dims[0], dims[1], pre_norm=False, post_norm=False)
-
-        self.upsampling = nn.ModuleList([first_upsampling] + [
-            Upsampling(dims[i], dims[i+1], pre_norm=True) for i in range(1, len(dims)-1)
-        ] + [final_upsampling])
-
-        self.blocks = nn.ModuleList([
-            MetaFormerBlock(dims[i+1], depth=depths[i], mixer=mixers[i],
-                            act=StarReLU, drop_probs=[0]*depths[i], **mixer_kwargs)
-            for i in range(0, len(depths))
-        ])
-
-        self.out_dim = out_channels
-        self.apply(_init_weights)
-
-    def forward(self, x):
-        for i in range(len(self.blocks)):
-            x = self.upsampling[i](x)
-            x = self.blocks[i](x)
-        return self.upsampling[-1](x)
-
-
 if __name__ == '__main__':
     x = torch.randn(64, 3, 32, 32)
-
     encoder = CAFormer(3, norm='ln')
-
     codes = encoder(x, return_embeddings=True)[-1]
-
-    decoder = MetaFormerDecoder(3, [AttentionConv, MBConv, MBConv])
-
+    decoder = encoder.get_decoder()
     print(f'{codes.shape} --> {decoder(codes).shape}')
+    print('TinyTest successful')
