@@ -17,12 +17,13 @@ class MLP(nn.Module):
     def __init__(self, dim, expansion=4, p_dropout=0.1, act=nn.GELU, bias=False, feature_dim=-1):
         super().__init__()
         med_channels = int(expansion * dim)
+        is_gated = isinstance(act(), GatedActFn)
         self.mlp = nn.Sequential(
             GeneralizedLinear(dim,
-                              med_channels if not isinstance(act(), GatedActFn) else med_channels*2,
+                              med_channels if not is_gated else med_channels*2,
                               bias,
                               feature_dim),
-            act(),
+            act(feature_dim if is_gated else  None),
             nn.Dropout(p_dropout),
             GeneralizedLinear(med_channels, dim, bias, feature_dim),
             nn.Dropout(p_dropout)

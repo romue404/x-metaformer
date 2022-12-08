@@ -1,13 +1,14 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from x_metaformer.layers.conv_layers import MBConv, Downsampling, Upsampling
+from x_metaformer.layers.conv_layers import MBConv, ConvDownsampling
 from x_metaformer.layers.mlp_layers import MLPConv
 from x_metaformer.layers.attention_layers import AttentionConv
-from x_metaformer.layers.act_layers import StarReLU, ReLUSquared, DropPath
+from x_metaformer.layers.act_layers import StarReLU, ReLUSquared, StarREGLU, DropPath
 from x_metaformer.layers.norm_layers import ConvLayerNorm, RMSNorm
 from functools import partial
 from abc import ABC, abstractmethod
+from inspect import signature
 
 
 class MetaFormerBlock(nn.Module):
@@ -69,19 +70,22 @@ def _init_weights(m):
 
 class MetaFormerABC(nn.Module, ABC):
     def __init__(self,
-                 in_channels, mixers, depths, dims,
-                 init_kernel_size, init_stride, drop_path_rate, norm, use_pos_emb
+                 in_channels,
+                 mixers,
+                 depths=(3, 3, 9, 3),
+                 dims=(64, 128, 256, 320),
+                 norm='ln',
+                 use_starreglu=False,
+                 **kwargs
                  ):
         super().__init__()
         assert 2 <= len(dims) == len(depths) >= 2
-        self.use_pos_emb = use_pos_emb
         self.in_channels = in_channels
         self.mixers = mixers
         self.dims = dims
-        self.init_kernel_size = init_kernel_size
-        self.init_stride = init_stride
-        self.drop_path_rate = drop_path_rate
         self.depths = depths
+        self.use_starreglu = use_starreglu
+        self.act = StarReLU if not use_starreglu else StarREGLU
 
         self.norm_inner, self.norm_out = self.get_norm(norm)
 
@@ -92,10 +96,10 @@ class MetaFormerABC(nn.Module, ABC):
         self.norm_out = self.norm_out(self.out_dim)
 
     @abstractmethod
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         pass
 
-    def get_norm(self, mode):
+    def get_norm(self, mode: str):
         if mode == 'ln':
             return ConvLayerNorm, nn.LayerNorm
         elif mode == 'rms':
@@ -108,38 +112,40 @@ class MetaFormerABC(nn.Module, ABC):
 
 class MetaFormer(MetaFormerABC):
     def __init__(self,
-                 in_channels,
-                 mixers,
-                 depths=(3, 3, 9, 3),
-                 dims=(64, 128, 320, 512),
+                 *args,
                  init_kernel_size=3,
                  init_stride=2,
                  drop_path_rate=0.3,
-                 norm='ln',
                  use_pos_emb=True,
-                 **mixer_kwargs):
-        super(MetaFormer, self).__init__(in_channels, mixers, depths, dims,
-                                         init_kernel_size, init_stride,
-                                         drop_path_rate, norm, use_pos_emb)
-        self.mixer_kwargs = mixer_kwargs
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+        self.init_kernel_size = init_kernel_size
+        self.init_stride = init_stride
+        self.drop_path_rate = drop_path_rate
+        self.use_pos_emb = use_pos_emb
 
-        init_downsampling = Downsampling(in_channels, dims[0],
-                                         init_kernel_size, init_stride,
-                                         norm=self.norm_inner,
-                                         pre_norm=False, post_norm=False
-                                         )
+        new_args = set(kwargs.keys()) - set(signature(super().__init__).parameters.keys())
+        new_args = {k: v for k, v in kwargs.items() if k in new_args}
+        self.mixer_kwargs = new_args  # every kwarg that is not already in the args of MetaFormerABC
 
-        dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
-        dix = np.cumsum((0, *depths))
+        init_downsampling = ConvDownsampling(self.in_channels, self.dims[0],
+                                             self.init_kernel_size, self.init_stride,
+                                             norm=self.norm_inner, pre_norm=False, post_norm=False
+                                             )
+
+        dp_rates = [x.item() for x in torch.linspace(0, self.drop_path_rate, sum(self.depths))]
+        dix = np.cumsum((0, *self.depths))
 
         self.pooling = nn.ModuleList([init_downsampling] + [
-            Downsampling(dims[i], dims[i+1], pre_norm=True, norm=self.norm_inner) for i in range(len(dims)-1)
+            ConvDownsampling(self.dims[i], self.dims[i+1],
+                             kernel_size=3, stride=2,
+                             pre_norm=True, norm=self.norm_inner) for i in range(len(self.dims)-1)
         ])
 
         self.blocks = nn.ModuleList([
-            MetaFormerBlock(dims[i], depth=depths[i], mixer=mixers[i], norm=self.norm_inner,
-                            act=StarReLU, drop_probs=dp_rates[dix[i]: dix[i+1]], **mixer_kwargs)
-            for i in range(len(depths))
+            MetaFormerBlock(self.dims[i], depth=self.depths[i], mixer=self.mixers[i], norm=self.norm_inner,
+                            mlp_act=self.act, act=StarReLU, drop_probs=dp_rates[dix[i]: dix[i+1]], **self.mixer_kwargs)
+            for i in range(len(self.depths))
         ])
 
         self.apply(_init_weights)
@@ -148,6 +154,7 @@ class MetaFormer(MetaFormerABC):
         return x.mean([-2, -1])
 
     def forward(self, x, return_embeddings=False):
+        print(x.shape)
         for i in range(len(self.blocks)):
             x = self.pooling[i](x)
             if i == 0 and self.use_pos_emb:
@@ -155,59 +162,6 @@ class MetaFormer(MetaFormerABC):
             x = self.blocks[i](x)
         pooled = self.norm_out(self.pool(x))
         return pooled if not return_embeddings else (pooled, x)
-
-    def get_decoder(self):
-        return MetaFormerDecoder(
-            in_channels=self.dims[-1],
-            out_channels=self.in_channels,
-            mixers=self.mixers[::-1][1:],
-            depths=self.depths[::-1][1:],
-            dims=self.dims[::-1][1:],
-            final_kernel_size=self.init_kernel_size,
-            final_stride=self.init_stride,
-            **self.mixer_kwargs
-        )
-
-
-MetaFormerEncoder = MetaFormer
-
-
-class MetaFormerDecoder(nn.Module):
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 mixers,
-                 depths,
-                 dims,
-                 final_kernel_size=3,
-                 final_stride=2,
-                 **mixer_kwargs
-                 ):
-        super(MetaFormerDecoder, self).__init__()
-
-        first_upsampling = Upsampling(in_channels, dims[0], pre_norm=False, post_norm=False)
-        final_upsampling = Upsampling(dims[-1], out_channels, final_kernel_size, final_stride, pre_norm=True)
-
-        self.pooling = nn.ModuleList(
-            [first_upsampling] +
-            [Upsampling(dims[i], dims[i+1], pre_norm=True) for i in range(0, len(dims)-1)] +
-            [final_upsampling]
-        )
-
-        self.blocks = nn.ModuleList([
-            MetaFormerBlock(dims[i], depth=depths[i], mixer=mixers[i],
-                            act=StarReLU, drop_probs=[0]*depths[i], **mixer_kwargs)
-            for i in range(0, len(depths))
-        ])
-
-        self.out_dim = out_channels
-        self.apply(_init_weights)
-
-    def forward(self, x):
-        for i in range(len(self.blocks)):
-            x = self.pooling[i](x)  # upsampling
-            x = self.blocks[i](x)
-        return self.pooling[-1](x)
 
 
 class ConvFormer(MetaFormer):
@@ -225,9 +179,8 @@ class CAFormer(MetaFormer):
 
 
 if __name__ == '__main__':
-    x = torch.randn(64, 3, 32, 32)
-    encoder = CAFormer(3, norm='ln')
+    x = torch.randn(64, 3, 64, 64)
+    encoder = CAFormer(3, norm='ln', depths=(2, 2, 4, 2),
+                       dims=(16, 32, 64, 128), init_kernel_size=3, init_stride=2)
     codes = encoder(x, return_embeddings=True)[-1]
-    decoder = encoder.get_decoder()
-    print(f'{codes.shape} --> {decoder(codes).shape}')
-    print('TinyTest successful')
+    print('CODES', codes.shape)

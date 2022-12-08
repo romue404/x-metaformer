@@ -1,10 +1,35 @@
+import math
+from collections.abc import Iterable
+from itertools import repeat
+import torch
 import torch.nn as nn
-from functools import partial
 from x_metaformer.layers.norm_layers import ConvLayerNorm
 
 
+def _pair(x):
+    if isinstance(x, Iterable):
+        return tuple(x)
+    return tuple(repeat(x, 2))
+
+
+class Conv2dSame(nn.Conv2d):
+    # logic taken from https://github.com/pytorch/pytorch/issues/3867#issuecomment-482711125
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        N, C, H, W = input.shape
+        H2 = math.ceil(H / self.stride[0])
+        W2 = math.ceil(W / self.stride[1])
+        Pr = (H2 - 1) * self.stride[0] + (self.kernel_size[0] - 1) * self.dilation[0] + 1 - H
+        Pc = (W2 - 1) * self.stride[1] + (self.kernel_size[0] - 1) * self.dilation[1] + 1 - W
+        x_pad = nn.ZeroPad2d((Pr//2, Pr - Pr//2, Pc//2, Pc - Pc//2))(input)
+        x_out = self._conv_forward(x_pad, self.weight, self.bias)
+        return x_out
+
+
 class MBConv(nn.Module):
-    def __init__(self, dim, expansion=2, kernel_size=3, act=nn.GELU, feature_dim=1, **kwargs):
+    def __init__(self, dim, expansion=2, kernel_size=3, act=nn.GELU, **kwargs):
         super().__init__()
         med_channels = int(expansion * dim)
         self.conv = nn.Sequential(
@@ -19,25 +44,28 @@ class MBConv(nn.Module):
         return self.conv(x)
 
 
-class LearnableUpDownsampling(nn.Module):
-    UP, DOWN = 'up', 'down'
-
-    def __init__(self, mode, in_channels, out_channels, kernel_size=3, stride=2, norm=ConvLayerNorm, pre_norm=False, post_norm=False):
-        super(LearnableUpDownsampling, self).__init__()
-        assert mode in [self.UP, self.DOWN], f'mode must either be "{self.UP}" or "{self.DOWN}"'
-        kernel_size = (kernel_size, kernel_size) if not isinstance(kernel_size, tuple) else kernel_size
-        stride = (stride, stride) if not isinstance(stride, tuple) else stride
-        padding = (kernel_size[0] // stride[0], kernel_size[1] // stride[1])
-        conv_cls = partial(nn.ConvTranspose2d, output_padding=padding) if mode == 'up' else nn.Conv2d
-        self.conv = nn.Sequential(
-            norm(in_channels) if pre_norm else nn.Identity(),
-            conv_cls(in_channels, out_channels, kernel_size, stride, padding=padding, bias=False),
-            norm(in_channels) if post_norm else nn.Identity()
-        )
+class ConvDownsampling(Conv2dSame):
+    def __init__(self, *args, norm=ConvLayerNorm, pre_norm=False, post_norm=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.norm_in  = norm(self.in_channels) if pre_norm else nn.Identity()
+        self.norm_out = norm(self.in_channels) if post_norm else nn.Identity()
 
     def forward(self, x):
-        return self.conv(x)
+        return self.norm_out(
+            super().forward(
+                self.norm_in(x)
+            )
+        )
 
 
-Upsampling   = partial(LearnableUpDownsampling, LearnableUpDownsampling.UP)
-Downsampling = partial(LearnableUpDownsampling, LearnableUpDownsampling.DOWN)
+
+if __name__ == '__main__':
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+
+
+    x = torch.randn(32, 126, 22, 22)
+    us = ConvDownsampling(126, 126, kernel_size=3, stride=2)
+
+    print(x.shape, '-->', us(x).shape)
