@@ -154,7 +154,6 @@ class MetaFormer(MetaFormerABC):
         return x.mean([-2, -1])
 
     def forward(self, x, return_embeddings=False):
-        print(x.shape)
         for i in range(len(self.blocks)):
             x = self.pooling[i](x)
             if i == 0 and self.use_pos_emb:
