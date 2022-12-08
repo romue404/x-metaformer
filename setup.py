@@ -9,7 +9,7 @@ setup(name='x-Metaformer',
       description='A PyTorch implementation of "MetaFormer Baselines" with optional extensions.',
       author='Robert Müller',
       author_email='robert.mueller1990@googlemail.com',
-      url='https://github.com/romue404/metaformer',
+      url='https://github.com/romue404/x-metaformer',
       license='MIT',
       keywords=[
             'artificial intelligence',
