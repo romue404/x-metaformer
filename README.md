@@ -1,6 +1,9 @@
 # x - Metaformer
-### 🚧 Repo is under active development ...
-A PyTorch implementation of ["MetaFormer Baselines"](https://arxiv.org/abs/2210.13452) with optional extensions.
+
+A PyTorch implementation of ["MetaFormer Baselines"](https://arxiv.org/abs/2210.13452) with optional extensions.  
+We support various self-supervised pretraining approaches such as [BarlowTwins](https://arxiv.org/abs/2103.03230),
+[MoCoV3](https://arxiv.org/abs/2104.02057) or [VICReg](https://arxiv.org/abs/2105.04906) (see ```x_metaformer.pretraining```).
+
 
 ## Setup
 Simply run:
@@ -37,3 +40,4 @@ my_metaformer = CAFormer(
 x   = torch.randn(64, 3, 64, 64)  # B C H W
 out = my_metaformer(x, return_embeddings=False)  # returns average pooled tokens
 ```
+### 🚧 Repo is under active development ...
