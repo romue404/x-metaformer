@@ -4,7 +4,7 @@ import torch.nn as nn
 from x_metaformer.layers.conv_layers import MBConv, ConvDownsampling
 from x_metaformer.layers.mlp_layers import MLPConv
 from x_metaformer.layers.attention_layers import AttentionConv
-from x_metaformer.layers.act_layers import StarReLU, ReLUSquared, StarREGLU, DropPath
+from x_metaformer.layers.act_layers import StarReLU, ReLUSquared, StarREGLU, DropPath, PatchMasking2D
 from x_metaformer.layers.norm_layers import ConvLayerNorm, RMSNorm
 from functools import partial
 from abc import ABC, abstractmethod
@@ -76,6 +76,7 @@ class MetaFormerABC(nn.Module, ABC):
                  dims=(64, 128, 256, 320),
                  norm='ln',
                  use_starreglu=False,
+                 patchmasking_prob=0.0,
                  **kwargs
                  ):
         super().__init__()
@@ -86,6 +87,8 @@ class MetaFormerABC(nn.Module, ABC):
         self.depths = depths
         self.use_starreglu = use_starreglu
         self.act = StarReLU if not use_starreglu else StarREGLU
+        self.patchmasking = PatchMasking2D(dims[0], 1, patchmasking_prob) \
+            if patchmasking_prob > 0 else nn.Identity()
 
         self.norm_inner, self.norm_out = self.get_norm(norm)
 
@@ -96,8 +99,21 @@ class MetaFormerABC(nn.Module, ABC):
         self.norm_out = self.norm_out(self.out_dim)
 
     @abstractmethod
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def pool(self, x):
         pass
+
+    def forward(self, x, return_embeddings=False):
+
+        x = self.pooling[0](x)
+        x = self.patchmasking(x)
+        x = x + (posemb_sincos_2d(x) if self.use_pos_emb else 0)
+
+        for i in range(1, len(self.blocks)):
+            x = self.pooling[i](x)
+            x = self.blocks[i](x)
+        pooled = self.norm_out(self.pool(x))
+
+        return pooled if not return_embeddings else (pooled, x)
 
     def get_norm(self, mode: str):
         if mode == 'ln':
@@ -153,14 +169,6 @@ class MetaFormer(MetaFormerABC):
     def pool(self, x):
         return x.mean([-2, -1])
 
-    def forward(self, x, return_embeddings=False):
-        for i in range(len(self.blocks)):
-            x = self.pooling[i](x)
-            if i == 0 and self.use_pos_emb:
-                x = x + posemb_sincos_2d(x)
-            x = self.blocks[i](x)
-        pooled = self.norm_out(self.pool(x))
-        return pooled if not return_embeddings else (pooled, x)
 
 
 class ConvFormer(MetaFormer):
@@ -180,6 +188,6 @@ class CAFormer(MetaFormer):
 if __name__ == '__main__':
     x = torch.randn(64, 3, 64, 64)
     encoder = CAFormer(3, norm='ln', depths=(2, 2, 4, 2),
-                       dims=(16, 32, 64, 128), init_kernel_size=3, init_stride=2)
+                       dims=(16, 32, 64, 128), init_kernel_size=3, init_stride=2, patchmasking_prob=0.2)
     codes = encoder(x, return_embeddings=True)[-1]
     print('CODES', codes.shape)

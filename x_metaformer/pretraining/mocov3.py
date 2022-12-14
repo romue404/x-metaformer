@@ -52,7 +52,7 @@ class MoCoV3(nn.Module):
         logits1 = (q1 @ k2.T) / self.temperature
         logits2 = (q2 @ k1.T) / self.temperature
 
-        labels = torch.arange(0, logits1.shape[0]).to(q1.device)
+        labels = torch.arange(0, logits1.shape[0], device=q1.device)
 
         l1, l2 = self.ce(logits1, labels), self.ce(logits2, labels)
 

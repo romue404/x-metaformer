@@ -65,3 +65,30 @@ class DropPath(nn.Module):
         if keep_prob > 0.0:
             random_tensor.div_(keep_prob)
         return x * random_tensor
+
+
+class PatchMasking2D(nn.Module):
+    def __init__(self, dim, feature_dim, p):
+        super().__init__()
+        assert 0 <= p < 1, 'p does not satisfy 0 <= p < 1.'
+        assert feature_dim in [1, -1], 'feature_dim must be either 1 or -1'
+        self.p = p
+        self.feature_dim = feature_dim
+        self.mask_token = nn.Parameter(torch.randn(dim))
+
+    def forward(self, x):
+        if not self.training or self.p == 0.:
+            return x
+        b, (r, c) = x.shape[0], x.shape[1:3] if self.feature_dim == -1 else x.shape[2:]
+        num_patches_drop = max(1, int(r * c * self.p))
+
+        b_rand, r_rand, c_rand = (
+            torch.randint(low=0, high=high, size=(num_patches_drop, ), device=x.device) for high in (b, r, c)
+        )
+
+        if self.feature_dim == 1:
+            x[b_rand, :, r_rand, c_rand] = self.mask_token
+        elif self.feature_dim == -1:
+            x[b_rand, r_rand, c_rand]    = self.mask_token
+
+        return x

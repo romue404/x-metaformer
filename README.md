@@ -28,6 +28,7 @@ my_metaformer = CAFormer(
     num_heads=4,
     attn_dropout=0.1,
     proj_dropout=0.1,
+    patchmasking_prob=0.05,  # replace 5% of the initial tokens with a </mask> token
     scale_value=1.0, # scale attention logits by this value
     trainable_scale=False, # if scale can be trained
     num_mem_vecs=0, # additional memory vectors (in the attention layers)
