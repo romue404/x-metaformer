@@ -1,4 +1,4 @@
-# x - Metaformer
+# 🥞 x-Metaformer
 
 A PyTorch implementation of ["MetaFormer Baselines"](https://arxiv.org/abs/2210.13452) with optional extensions.  
 We support various self-supervised pretraining approaches such as [BarlowTwins](https://arxiv.org/abs/2103.03230),
