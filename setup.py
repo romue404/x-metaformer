@@ -5,7 +5,7 @@ long_description = (this_directory / "README.md").read_text()
 
 
 setup(name='x-Metaformer',
-      version='0.1.7',
+      version='0.1.8',
       description='A PyTorch implementation of "MetaFormer Baselines" with optional extensions.',
       author='Robert Müller',
       author_email='robert.mueller1990@googlemail.com',
