@@ -41,4 +41,3 @@ my_metaformer = CAFormer(
 x   = torch.randn(64, 3, 64, 64)  # B C H W
 out = my_metaformer(x, return_embeddings=False)  # returns average pooled tokens
 ```
-### 🚧 Repo is under active development ...
