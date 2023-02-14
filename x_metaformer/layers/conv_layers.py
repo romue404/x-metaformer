@@ -48,7 +48,7 @@ class ConvDownsampling(Conv2dSame):
     def __init__(self, *args, norm=ConvLayerNorm, pre_norm=False, post_norm=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.norm_in  = norm(self.in_channels) if pre_norm else nn.Identity()
-        self.norm_out = norm(self.in_channels) if post_norm else nn.Identity()
+        self.norm_out = norm(self.out_channels) if post_norm else nn.Identity()
 
     def forward(self, x):
         return self.norm_out(

@@ -133,6 +133,7 @@ class MetaFormer(MetaFormerABC):
                  init_stride=2,
                  drop_path_rate=0.3,
                  use_pos_emb=True,
+                 dual_patchnorm=False,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.init_kernel_size = init_kernel_size
@@ -146,7 +147,9 @@ class MetaFormer(MetaFormerABC):
 
         init_downsampling = ConvDownsampling(self.in_channels, self.dims[0],
                                              self.init_kernel_size, self.init_stride,
-                                             norm=self.norm_inner, pre_norm=False, post_norm=False
+                                             norm=self.norm_inner,
+                                             pre_norm=dual_patchnorm,
+                                             post_norm=dual_patchnorm
                                              )
 
         dp_rates = [x.item() for x in torch.linspace(0, self.drop_path_rate, sum(self.depths))]
@@ -188,6 +191,6 @@ class CAFormer(MetaFormer):
 if __name__ == '__main__':
     x = torch.randn(64, 3, 64, 64)
     encoder = CAFormer(3, norm='ln', depths=(2, 2, 4, 2),
-                       dims=(16, 32, 64, 128), init_kernel_size=3, init_stride=2, patchmasking_prob=0.2)
+                       dims=(16, 32, 64, 128), init_kernel_size=3, init_stride=2, patchmasking_prob=0.2, dual_patchnorm=True)
     codes = encoder(x, return_embeddings=True)[-1]
     print('CODES', codes.shape)
