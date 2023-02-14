@@ -62,7 +62,6 @@ class ConvDownsampling(Conv2dSame):
 if __name__ == '__main__':
     import torch
     import torch.nn as nn
-    import torch.nn.functional as F
 
 
     x = torch.randn(32, 126, 22, 22)

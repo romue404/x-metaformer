@@ -23,6 +23,7 @@ my_metaformer = CAFormer(
     init_stride=2,
     drop_path_rate=0.5,
     norm='ln',  # ln, bn or rms (layernorm, batchnorm or rmsnorm)
+    use_dual_patchnorm=False,  # norm on both sides for the patch embedding
     use_pos_emb=True,  # use 2d sinusodial positional embeddings
     head_dim=32,
     num_heads=4,

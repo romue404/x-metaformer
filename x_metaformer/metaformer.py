@@ -133,7 +133,7 @@ class MetaFormer(MetaFormerABC):
                  init_stride=2,
                  drop_path_rate=0.3,
                  use_pos_emb=True,
-                 dual_patchnorm=False,
+                 use_dual_patchnorm=False,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.init_kernel_size = init_kernel_size
@@ -148,8 +148,8 @@ class MetaFormer(MetaFormerABC):
         init_downsampling = ConvDownsampling(self.in_channels, self.dims[0],
                                              self.init_kernel_size, self.init_stride,
                                              norm=self.norm_inner,
-                                             pre_norm=dual_patchnorm,
-                                             post_norm=dual_patchnorm
+                                             pre_norm=use_dual_patchnorm,
+                                             post_norm=use_dual_patchnorm
                                              )
 
         dp_rates = [x.item() for x in torch.linspace(0, self.drop_path_rate, sum(self.depths))]
