@@ -21,7 +21,7 @@ class Attention(nn.Module):
                  improve_locality=False,
                  **kwargs):
         super().__init__()
-        assert channel_loc in [1, -1], 'Token dimension must be 1 or -1.]'
+        assert channel_loc in [1, -1], 'Token dimension must be 1 or -1.'
         assert scale_value > 0, 'scale_value must be > 0'
         self.num_heads       = num_heads
         self.trainable_scale = trainable_scale
@@ -100,6 +100,7 @@ class Attention(nn.Module):
 
 
 AttentionConv = partial(Attention, 1)
+
 
 
 if __name__ == '__main__':

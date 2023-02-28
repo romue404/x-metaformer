@@ -6,6 +6,7 @@ from x_metaformer.layers.mlp_layers import MLPConv
 from x_metaformer.layers.attention_layers import AttentionConv
 from x_metaformer.layers.act_layers import StarReLU, ReLUSquared, StarREGLU, DropPath, PatchMasking2D
 from x_metaformer.layers.norm_layers import ConvLayerNorm, RMSNorm
+from x_metaformer.layers.mixing_layers import FNetConv
 from functools import partial
 from abc import ABC, abstractmethod
 from inspect import signature
@@ -188,9 +189,24 @@ class CAFormer(MetaFormer):
                          **kwargs)
 
 
+class CFFormer(MetaFormer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,
+                         mixers=(MBConv, MBConv, FNetConv, FNetConv),
+                         **kwargs)
+
+
 if __name__ == '__main__':
     x = torch.randn(64, 3, 64, 64)
     encoder = CAFormer(3, norm='ln', depths=(2, 2, 4, 2),
-                       dims=(16, 32, 64, 128), init_kernel_size=3, init_stride=2, patchmasking_prob=0.2, dual_patchnorm=True)
+                       dims=(16, 32, 64, 128), init_kernel_size=3,
+                       init_stride=2, patchmasking_prob=0.2,
+                       dual_patchnorm=True)
     codes = encoder(x, return_embeddings=True)[-1]
+    print('CODES', codes.shape)
+    encoder2 = CFFormer(3, norm='ln', depths=(2, 2, 4, 2),
+                        dims=(16, 32, 64, 128), init_kernel_size=3,
+                        init_stride=2, patchmasking_prob=0.2,
+                        dual_patchnorm=True)
+    codes = encoder2(x, return_embeddings=True)[-1]
     print('CODES', codes.shape)
