@@ -1,1 +1,1 @@
-from x_metaformer.metaformer import MetaFormer, CAFormer, ConvFormer
+from x_metaformer.metaformer import MetaFormer, CAFormer, ConvFormer, CFFormer
