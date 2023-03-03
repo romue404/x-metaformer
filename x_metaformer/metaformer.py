@@ -174,7 +174,6 @@ class MetaFormer(MetaFormerABC):
         return x.mean([-2, -1])
 
 
-
 class ConvFormer(MetaFormer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args,

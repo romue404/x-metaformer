@@ -27,7 +27,7 @@ class VICReg(BarlowTwins):
         b, d = z1.shape
 
         var_term = 0.5 * F.relu(1.0 - z1.std(0)).mean() + \
-                   0.5 * F.relu(z2.std(0)).mean()
+                   0.5 * F.relu(1.0 - z2.std(0)).mean()
 
         cov_var_term = self.off_diag(z1.cov()).pow_(2).sum().div(d) + \
                        self.off_diag(z2.cov()).pow_(2).sum().div(d)
