@@ -6,7 +6,7 @@ from x_metaformer.layers.mlp_layers import MLPConv
 from x_metaformer.layers.attention_layers import AttentionConv
 from x_metaformer.layers.act_layers import StarReLU, ReLUSquared, StarREGLU, DropPath, PatchMasking2D
 from x_metaformer.layers.norm_layers import ConvLayerNorm, RMSNorm
-from x_metaformer.layers.mixing_layers import FNetConv
+from x_metaformer.layers.mixing_layers import FNetConv, MeanPoolConv, SeqPoolConv
 from functools import partial
 from abc import ABC, abstractmethod
 from inspect import signature
@@ -135,6 +135,7 @@ class MetaFormer(MetaFormerABC):
                  drop_path_rate=0.3,
                  use_pos_emb=True,
                  use_dual_patchnorm=False,
+                 use_seqpool=False,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.init_kernel_size = init_kernel_size
@@ -168,10 +169,12 @@ class MetaFormer(MetaFormerABC):
             for i in range(len(self.depths))
         ])
 
+        self.pooling_layer = SeqPoolConv(self.dims[-1]) if use_seqpool else MeanPoolConv()
+
         self.apply(_init_weights)
 
     def pool(self, x):
-        return x.mean([-2, -1])
+        return self.pooling_layer(x)
 
 
 class ConvFormer(MetaFormer):
@@ -200,7 +203,7 @@ if __name__ == '__main__':
     encoder = CAFormer(3, norm='ln', depths=(2, 2, 4, 2),
                        dims=(16, 32, 64, 128), init_kernel_size=3,
                        init_stride=2, patchmasking_prob=0.2,
-                       dual_patchnorm=True)
+                       dual_patchnorm=True, use_seqpool=True)
     codes = encoder(x, return_embeddings=True)[-1]
     print('CODES', codes.shape)
     encoder2 = CFFormer(3, norm='ln', depths=(2, 2, 4, 2),
