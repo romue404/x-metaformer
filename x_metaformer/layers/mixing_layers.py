@@ -37,6 +37,7 @@ FNetConv = partial(FNet, 1)
 
 
 class SeqPool(nn.Module):
+    # https://arxiv.org/pdf/2104.05704.pdf
     def __init__(self, channel_loc, in_dim, *args, **kwargs):
         super().__init__()
         assert channel_loc in [1, -1]
