@@ -1,5 +1,6 @@
 import torch.nn as nn
 from x_metaformer.layers.act_layers import GatedActFn
+from x_metaformer.layers.norm_layers import GRN
 
 
 class GeneralizedLinear(nn.Module):
@@ -14,16 +15,18 @@ class GeneralizedLinear(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, dim, expansion=4, p_dropout=0.1, act=nn.GELU, bias=False, feature_dim=-1):
+    def __init__(self, dim, expansion=4, p_dropout=0.1, act=nn.GELU, bias=False, feature_dim=-1, grn=False):
         super().__init__()
         med_channels = int(expansion * dim)
         is_gated = isinstance(act(), GatedActFn)
+        c = med_channels if not is_gated else med_channels*2
         self.mlp = nn.Sequential(
             GeneralizedLinear(dim,
-                              med_channels if not is_gated else med_channels*2,
+                              c,
                               bias,
                               feature_dim),
             act(feature_dim if is_gated else  None),
+            GRN(feature_dim, c) if grn else nn.Identity(),
             nn.Dropout(p_dropout),
             GeneralizedLinear(med_channels, dim, bias, feature_dim),
             nn.Dropout(p_dropout)

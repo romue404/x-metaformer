@@ -27,3 +27,27 @@ class ConvLayerNorm(nn.Module):
 
     def forward(self, x):
         return self.norm(x)
+
+
+class GRN(nn.Module):
+    def __init__(self, feature_dim, dim):
+        super().__init__()
+        assert feature_dim in [-1, 1]
+        self.feature_dim = feature_dim
+        dims = [1]*4
+        dims[feature_dim] = dim
+        self.gamma = nn.Parameter(torch.zeros(*dims))
+        self.beta = nn.Parameter(torch.zeros(*dims))
+
+    def forward(self, x):
+        dims = (-2, -1) if self.feature_dim == -1 else (1, 2)
+        Gx = torch.norm(x, p=2, dim=dims, keepdim=True)
+        Nx = Gx / (Gx.mean(dim=-self.feature_dim, keepdim=True) + 1e-6)
+        return self.gamma * (x * Nx) + self.beta + x
+
+
+if __name__ == '__main__':
+    norm = GRN(1, 64)
+    batch = torch.randn(12, 64, 8, 8)
+    out = norm(batch)
+    print(out.shape)

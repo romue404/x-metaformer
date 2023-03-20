@@ -14,7 +14,7 @@ from inspect import signature
 
 class MetaFormerBlock(nn.Module):
     def __init__(self, dim, depth, mixer, drop_probs, norm=ConvLayerNorm,
-                 mlp_act=ReLUSquared, mlp_expansion=4, mlp_dropout=0.1, **mixer_kwargs):
+                 mlp_act=ReLUSquared, mlp_expansion=4, use_grn_mlp=False, mlp_dropout=0.1, **mixer_kwargs):
         super(MetaFormerBlock, self).__init__()
         self.depth = depth
         self.dim = dim
@@ -30,13 +30,13 @@ class MetaFormerBlock(nn.Module):
         self.mlp = nn.ModuleList(
             [nn.Sequential(
                 norm(dim),
-                MLPConv(dim, mlp_expansion, mlp_dropout, mlp_act)
+                MLPConv(dim, mlp_expansion, mlp_dropout, mlp_act, grn=use_grn_mlp)
             ) for _ in range(depth)]
         )
 
         self.drop_paths      = nn.ModuleList([DropPath(p) for p in drop_probs])
-        self.res_scale_mixer = nn.Parameter(torch.ones(depth, dim, 1, 1), requires_grad=True)
-        self.res_scale_mlp   = nn.Parameter(torch.ones(depth, dim, 1, 1), requires_grad=True)
+        self.res_scale_mixer = nn.Parameter(torch.ones(depth, dim, 1, 1), requires_grad=not use_grn_mlp)
+        self.res_scale_mlp   = nn.Parameter(torch.ones(depth, dim, 1, 1), requires_grad=not use_grn_mlp)
 
     def forward(self, x):
         for i in range(self.depth):
@@ -124,10 +124,8 @@ class MetaFormerABC(nn.Module, ABC):
             return norm, norm, partial(RMSNorm, dim=(1, ))
         elif mode == 'bn':
             return nn.BatchNorm2d, nn.BatchNorm2d, nn.BatchNorm1d
-        elif mode == 'rz':
-            return ConvLayerNorm, nn.Identity, nn.LayerNorm
         else:
-            raise NotImplemented('Norm must be "ln", "rms", "bn" or "rz"')
+            raise NotImplemented('Norm must be "ln", "rms" or "bn"')
 
 
 class MetaFormer(MetaFormerABC):
@@ -203,9 +201,10 @@ class CFFormer(MetaFormer):
 
 if __name__ == '__main__':
     x = torch.randn(64, 3, 64, 64)
-    encoder = CAFormer(3, norm='rz', depths=(2, 2, 4, 2),
+    encoder = CAFormer(3, norm='ln', depths=(2, 2, 4, 2),
                        dims=(16, 32, 64, 128), init_kernel_size=3,
-                       init_stride=2, patchmasking_prob=0.2,
+                       init_stride=2, patchmasking_prob=0.0,
+                       use_grn_mlp=True,
                        dual_patchnorm=True, use_seqpool=True)
     codes = encoder(x, return_embeddings=True)[-1]
     print('CODES', codes.shape)
