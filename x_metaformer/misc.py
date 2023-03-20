@@ -1,4 +1,4 @@
-def exclude_from_wt_decay(named_params, weight_decay, skip_list=("temp", "temperature", "scale", "norm")):
+def exclude_from_wt_decay(named_params, weight_decay, skip_list=("temp", "temperature", "scale", "norm", "bias")):
     params = []
     excluded_params = []
 

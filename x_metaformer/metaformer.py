@@ -91,7 +91,7 @@ class MetaFormerABC(nn.Module, ABC):
         self.patchmasking = PatchMasking2D(dims[0], 1, patchmasking_prob) \
             if patchmasking_prob > 0 else nn.Identity()
 
-        self.norm_inner, self.norm_out = self.get_norm(norm)
+        self.norm_init, self.norm_inner, self.norm_out = self.get_norm(norm)
 
         self.pooling: nn.ModuleList
         self.blocks: nn.ModuleList
@@ -118,13 +118,16 @@ class MetaFormerABC(nn.Module, ABC):
 
     def get_norm(self, mode: str):
         if mode == 'ln':
-            return ConvLayerNorm, nn.LayerNorm
+            return ConvLayerNorm, ConvLayerNorm, nn.LayerNorm
         elif mode == 'rms':
-            return partial(RMSNorm, dim=(-2, -1)), partial(RMSNorm, dim=(1, ))
+            norm = partial(RMSNorm, dim=(-2, -1))
+            return norm, norm, partial(RMSNorm, dim=(1, ))
         elif mode == 'bn':
-            return nn.BatchNorm2d, nn.BatchNorm1d
+            return nn.BatchNorm2d, nn.BatchNorm2d, nn.BatchNorm1d
+        elif mode == 'rz':
+            return ConvLayerNorm, nn.Identity, nn.LayerNorm
         else:
-            raise NotImplemented('Norm must be "ln", "rms" or "bn"')
+            raise NotImplemented('Norm must be "ln", "rms", "bn" or "rz"')
 
 
 class MetaFormer(MetaFormerABC):
@@ -200,7 +203,7 @@ class CFFormer(MetaFormer):
 
 if __name__ == '__main__':
     x = torch.randn(64, 3, 64, 64)
-    encoder = CAFormer(3, norm='ln', depths=(2, 2, 4, 2),
+    encoder = CAFormer(3, norm='rz', depths=(2, 2, 4, 2),
                        dims=(16, 32, 64, 128), init_kernel_size=3,
                        init_stride=2, patchmasking_prob=0.2,
                        dual_patchnorm=True, use_seqpool=True)
