@@ -30,6 +30,7 @@ class ConvLayerNorm(nn.Module):
 
 
 class GRN(nn.Module):
+    # https://arxiv.org/abs/2301.00808
     def __init__(self, feature_dim, dim):
         super().__init__()
         assert feature_dim in [-1, 1]
