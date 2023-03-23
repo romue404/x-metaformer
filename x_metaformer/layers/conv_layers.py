@@ -12,22 +12,6 @@ def _pair(x):
     return tuple(repeat(x, 2))
 
 
-class Conv2dSame(nn.Conv2d):
-    # logic taken from https://github.com/pytorch/pytorch/issues/3867#issuecomment-482711125
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        N, C, H, W = input.shape
-        H2 = math.ceil(H / self.stride[0])
-        W2 = math.ceil(W / self.stride[1])
-        Pr = (H2 - 1) * self.stride[0] + (self.kernel_size[0] - 1) * self.dilation[0] + 1 - H
-        Pc = (W2 - 1) * self.stride[1] + (self.kernel_size[0] - 1) * self.dilation[1] + 1 - W
-        x_pad = nn.ZeroPad2d((Pr//2, Pr - Pr//2, Pc//2, Pc - Pc//2))(input)
-        x_out = self._conv_forward(x_pad, self.weight, self.bias)
-        return x_out
-
-
 class MBConv(nn.Module):
     def __init__(self, dim, expansion=2, kernel_size=3, act=nn.GELU, **kwargs):
         super().__init__()
@@ -44,7 +28,7 @@ class MBConv(nn.Module):
         return self.conv(x)
 
 
-class ConvDownsampling(Conv2dSame):
+class ConvDownsampling(nn.Conv2d):
     def __init__(self, *args, norm=ConvLayerNorm, pre_norm=False, post_norm=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.norm_in  = norm(self.in_channels) if pre_norm else nn.Identity()
@@ -57,6 +41,22 @@ class ConvDownsampling(Conv2dSame):
             )
         )
 
+
+class Conv2dSame(nn.Conv2d):
+    # logic taken from https://github.com/pytorch/pytorch/issues/3867#issuecomment-482711125
+    # was once used for ConvDownsampling. Is not copatible with torch.compile(...)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        N, C, H, W = input.shape
+        H2 = math.ceil(H / self.stride[0])
+        W2 = math.ceil(W / self.stride[1])
+        Pr = (H2 - 1) * self.stride[0] + (self.kernel_size[0] - 1) * self.dilation[0] + 1 - H
+        Pc = (W2 - 1) * self.stride[1] + (self.kernel_size[0] - 1) * self.dilation[1] + 1 - W
+        x_pad = nn.ZeroPad2d((Pr//2, Pr - Pr//2, Pc//2, Pc - Pc//2))(input)
+        x_out = self._conv_forward(x_pad, self.weight, self.bias)
+        return x_out
 
 
 if __name__ == '__main__':

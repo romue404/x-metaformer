@@ -105,13 +105,18 @@ class MetaFormerABC(nn.Module, ABC):
 
     def forward(self, x, return_embeddings=False):
 
+        # firs layer
         x = self.pooling[0](x)
         x = self.patchmasking(x)
         x = x + (posemb_sincos_2d(x) if self.use_pos_emb else 0)
+        x = self.blocks[0](x)
 
-        for i in range(1, len(self.blocks)):
-            x = self.pooling[i](x)
-            x = self.blocks[i](x)
+        # other layers
+        for pooling, block in zip(self.pooling[1:], self.blocks[1:]):
+            x = pooling(x)
+            x = block(x)
+
+        # pool results
         pooled = self.norm_out(self.pool(x))
 
         return pooled if not return_embeddings else (pooled, x)
@@ -150,6 +155,7 @@ class MetaFormer(MetaFormerABC):
 
         init_downsampling = ConvDownsampling(self.in_channels, self.dims[0],
                                              self.init_kernel_size, self.init_stride,
+                                             padding=self.init_kernel_size - self.init_stride,
                                              norm=self.norm_inner,
                                              pre_norm=use_dual_patchnorm,
                                              post_norm=use_dual_patchnorm
@@ -160,7 +166,7 @@ class MetaFormer(MetaFormerABC):
 
         self.pooling = nn.ModuleList([init_downsampling] + [
             ConvDownsampling(self.dims[i], self.dims[i+1],
-                             kernel_size=3, stride=2,
+                             kernel_size=3, stride=2, padding=1,
                              pre_norm=True, norm=self.norm_inner) for i in range(len(self.dims)-1)
         ])
 
@@ -206,6 +212,8 @@ if __name__ == '__main__':
                        init_stride=2, patchmasking_prob=0.0,
                        use_grn_mlp=True,
                        dual_patchnorm=True, use_seqpool=True)
+
+    #encoder = torch.compile(encoder)
     codes = encoder(x, return_embeddings=True)[-1]
     print('CODES', codes.shape)
     encoder2 = CFFormer(3, norm='ln', depths=(2, 2, 4, 2),
