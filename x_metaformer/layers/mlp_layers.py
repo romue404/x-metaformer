@@ -26,7 +26,7 @@ class MLP(nn.Module):
                               bias,
                               feature_dim),
             act(feature_dim if is_gated else  None),
-            GRN(feature_dim, c) if grn else nn.Identity(),
+            GRN(feature_dim, med_channels) if grn else nn.Identity(),
             nn.Dropout(p_dropout),
             GeneralizedLinear(med_channels, dim, bias, feature_dim),
             nn.Dropout(p_dropout)

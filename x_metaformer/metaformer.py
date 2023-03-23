@@ -210,7 +210,7 @@ if __name__ == '__main__':
     encoder = CAFormer(3, norm='ln', depths=(2, 2, 4, 2),
                        dims=(16, 32, 64, 128), init_kernel_size=3,
                        init_stride=2, patchmasking_prob=0.0,
-                       use_grn_mlp=True,
+                       use_grn_mlp=True, use_starreglu=True,
                        dual_patchnorm=True, use_seqpool=True)
 
     #encoder = torch.compile(encoder)
