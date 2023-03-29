@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from x_metaformer.layers.conv_layers import MBConv, ConvDownsampling
+from x_metaformer.layers.conv_layers import MBConv, ConvDownsampling, _pair
 from x_metaformer.layers.mlp_layers import MLPConv
 from x_metaformer.layers.attention_layers import AttentionConv
 from x_metaformer.layers.act_layers import StarReLU, ReLUSquared, StarREGLU, DropPath, PatchMasking2D
@@ -153,9 +153,10 @@ class MetaFormer(MetaFormerABC):
         new_args = {k: v for k, v in kwargs.items() if k in new_args}
         self.mixer_kwargs = new_args  # every kwarg that is not already in the args of MetaFormerABC
 
+        ipadd = _pair(np.array(self.init_kernel_size) - np.array(self.init_stride))
         init_downsampling = ConvDownsampling(self.in_channels, self.dims[0],
                                              self.init_kernel_size, self.init_stride,
-                                             padding=self.init_kernel_size - self.init_stride,
+                                             padding=ipadd,
                                              norm=self.norm_inner,
                                              pre_norm=use_dual_patchnorm,
                                              post_norm=use_dual_patchnorm
@@ -208,8 +209,8 @@ class CFFormer(MetaFormer):
 if __name__ == '__main__':
     x = torch.randn(64, 3, 64, 64)
     encoder = CAFormer(3, norm='ln', depths=(2, 2, 4, 2),
-                       dims=(16, 32, 64, 128), init_kernel_size=3,
-                       init_stride=2, patchmasking_prob=0.0,
+                       dims=(16, 32, 64, 128), init_kernel_size=(8, 4),
+                       init_stride=(4, 2), patchmasking_prob=0.0,
                        use_grn_mlp=True, use_starreglu=True,
                        dual_patchnorm=True, use_seqpool=True)
 
