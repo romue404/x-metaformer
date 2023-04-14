@@ -53,8 +53,9 @@ class Attention(nn.Module):
         self.scale = nn.Parameter(torch.ones(1, num_heads, 1, 1).mul_(scale_value).float(),
                                   requires_grad=trainable_scale)
         if num_mem_vecs > 0:
-            self.mem_k = nn.Parameter(torch.randn(num_heads, num_mem_vecs, head_dim))
-            self.mem_v = nn.Parameter(torch.randn(num_heads, num_mem_vecs, head_dim))
+            n_mv = num_heads if not multi_query_attention else 1
+            self.mem_k = nn.Parameter(torch.randn(n_mv, num_mem_vecs, head_dim))
+            self.mem_v = nn.Parameter(torch.randn(n_mv, num_mem_vecs, head_dim))
 
     def reshape_qkv(self, qkv):
         B = qkv.shape[0]
@@ -120,7 +121,7 @@ if __name__ == '__main__':
     for c, f, t in [(64, 16, 8), (128, 22, 44)]:
         test_batch = torch.randn(12, c, f, t)
         out = AttentionConv(c, l2=True, scale_value=10,
-                            trainable_scale=False,
+                            trainable_scale=False, num_mem_vecs=2,
                             multi_query_attention=True)(test_batch)
         print(f'Attention:   {out.shape}')
     print('TinyTest1 successful')
