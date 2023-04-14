@@ -19,6 +19,7 @@ my_metaformer = CAFormer(
     in_channels=3,
     depths=(3, 3, 9, 3),
     dims=(64, 128, 320, 512),
+    multi_query_attention=False,  # share keys and values across query heads
     use_seqpool=True,  # use sequence pooling vom CCT
     init_kernel_size=3,
     init_stride=2,
