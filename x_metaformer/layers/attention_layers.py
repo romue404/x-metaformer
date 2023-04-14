@@ -19,6 +19,7 @@ class Attention(nn.Module):
                  l2=False,
                  trainable_scale=False,
                  improve_locality=False,
+                 multi_query_attention=False,
                  **kwargs):
         super().__init__()
         assert channel_loc in [1, -1], 'Token dimension must be 1 or -1.'
@@ -32,11 +33,16 @@ class Attention(nn.Module):
         self.num_mem_vecs = num_mem_vecs
         self.improve_locality = improve_locality
         self.l2 = l2
+        self.mqa = multi_query_attention
+
+        n_qkv = 3*self.head_dim*self.num_heads if not self.mqa else self.head_dim*self.num_heads + 2*self.head_dim
+
         self.qkv = GeneralizedLinear(in_features=self.dim,
-                                     out_features=3*self.head_dim*self.num_heads,
+                                     out_features=n_qkv,
                                      feature_dim=channel_loc,
                                      bias=False
                                      )
+
         self.proj_out = GeneralizedLinear(in_features=self.head_dim*self.num_heads,
                                           out_features=self.dim,
                                           feature_dim=channel_loc,
@@ -51,7 +57,15 @@ class Attention(nn.Module):
             self.mem_v = nn.Parameter(torch.randn(num_heads, num_mem_vecs, head_dim))
 
     def reshape_qkv(self, qkv):
-        return qkv.reshape(3, qkv.shape[0], self.num_heads, -1, self.head_dim)
+        B = qkv.shape[0]
+        if self.mqa:
+            hd2 =  2*self.head_dim
+            kv  = qkv[:, :hd2] if self.channel_dim == 1 else qkv[..., :hd2]
+            q   = qkv[:, hd2:] if self.channel_dim == 1 else qkv[..., hd2:]
+            q   = q.reshape(B, self.num_heads, -1, self.head_dim)
+            kv  = kv.reshape(2, B, 1, -1, self.head_dim)
+            return q, *(kv.unbind(0))
+        return qkv.reshape(3, B, self.num_heads, -1, self.head_dim).unbind(0)
 
     def reshape_attention(self, attention, x_shape):
         if len(x_shape) > 3:  # initial shape of  B C H W or B H W C
@@ -90,8 +104,7 @@ class Attention(nn.Module):
         return scores
 
     def forward(self, x):
-        qkv = self.reshape_qkv(self.qkv(x))
-        q, k, v = qkv.unbind(0)
+        q, k, v = self.reshape_qkv(self.qkv(x))
         k, v = self.cat_mem_vecs(k, v, x.shape[0])
         scores = self.sparsify(self.adjust_scores(self.scale_scores(self.compute_scores(q, k))))
         attention = self.attn_dropout(scores.softmax(-1)) @ v
@@ -106,10 +119,16 @@ AttentionConv = partial(Attention, 1)
 if __name__ == '__main__':
     for c, f, t in [(64, 16, 8), (128, 22, 44)]:
         test_batch = torch.randn(12, c, f, t)
-        print(f'Attention:   {AttentionConv(c, l2=True, scale_value=10, trainable_scale=False)(test_batch).shape}')
+        out = AttentionConv(c, l2=True, scale_value=10,
+                            trainable_scale=False,
+                            multi_query_attention=True)(test_batch)
+        print(f'Attention:   {out.shape}')
     print('TinyTest1 successful')
 
     for c, f, t in [(64, 16, 8), (128, 22, 44)]:
         test_batch = torch.randn(12, f, t, c)
-        print(f'Attention:   {Attention(-1, c, l2=True, scale_value=10, trainable_scale=False)(test_batch).shape}')
+        out = Attention(-1, c, l2=True, scale_value=10,
+                        trainable_scale=False,
+                        multi_query_attention=True)(test_batch)
+        print(f'Attention:   {out.shape}')
     print('TinyTest2 successful')
